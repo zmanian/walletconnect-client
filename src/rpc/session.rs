@@ -1,4 +1,4 @@
-use crate::metadata::Empty;
+use crate::metadata::{Empty, SessionDeletion, SessionEvent, SessionUpdate};
 
 use super::{
     super::{
@@ -94,4 +94,10 @@ pub enum WalletMessage {
     Settlement(SessionSettlement),
     #[serde(rename = "wc_sessionPing")]
     Ping(Empty),
+    #[serde(rename = "wc_sessionUpdate")]
+    Update(SessionUpdate),
+    #[serde(rename = "wc_sessionEvent")]
+    Event(SessionEvent),
+    #[serde(rename = "wc_sessionDelete")]
+    Delete(SessionDeletion),
 }

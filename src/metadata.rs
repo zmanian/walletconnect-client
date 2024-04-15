@@ -105,6 +105,14 @@ pub enum Chain {
     Eip155(u64),
 }
 
+impl Into<u64> for Chain {
+    fn into(self) -> u64 {
+        match self {
+            Chain::Eip155(id) => id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Error)]
 pub enum ChainError {
     #[error("Chain information provided in bad format")]
@@ -182,6 +190,7 @@ pub struct Session {
     pub proposer: Peer,
     pub controller: Option<Peer>,
     pub expiry: Option<DateTime<Utc>>,
+    pub chain_id: u64,
 }
 
 impl Session {
@@ -218,6 +227,7 @@ impl Session {
             proposer: Peer { public_key: "".to_string(), metadata },
             controller: None,
             expiry: None,
+            chain_id,
         }
     }
 
@@ -229,6 +239,37 @@ impl Session {
             Utc::now().offset().clone(),
         ));
         self.pairing_topic = Some(settlement.pairing_topic.clone());
+
+        self.update_chain_id();
+    }
+
+    pub fn update(&mut self, update: &SessionUpdate) {
+        self.namespaces = Some(update.namespaces.clone());
+        self.update_chain_id();
+    }
+
+    pub fn event(&mut self, event: &SessionEvent) {
+        match &event.event {
+            SessionEventType::AccountsChanged(ref acc_update) => {
+                // We replace accounts in namespace
+
+                let new_acc = acc_update.clone();
+                if let Some(mut nspaces) = self.namespaces.clone() {
+                    if let Some(eip155_namespace) = nspaces.get_mut("eip155") {
+                        eip155_namespace.accounts = Some(new_acc.data.into());
+                    }
+                }
+                // Last but not least - change chain id
+                self.chain_id = new_acc.chain_id.into();
+            }
+        }
+    }
+
+    pub fn close(&mut self) {
+        self.pairing_topic = None;
+        self.namespaces = None;
+        self.controller = None;
+        self.expiry = None;
     }
 
     pub fn into_propose(&self) -> SessionPropose {
@@ -237,6 +278,40 @@ impl Session {
             required_namespaces: self.required_namespaces.clone(),
             optional_namespaces: self.optional_namespaces.clone(),
             proposer: self.proposer.clone(),
+        }
+    }
+
+    pub fn namespace(&self) -> Option<Namespace> {
+        if let Some(namespaces) = &self.namespaces {
+            if let Some(eip155_namespace) = namespaces.get("eip155") {
+                return Some(eip155_namespace.clone());
+            }
+        }
+        None
+    }
+
+    pub fn available_networks(&self) -> Vec<u64> {
+        let mut chain_ids = Vec::new();
+        if let Some(namespace) = self.namespace() {
+            if let Some(accounts) = &namespace.accounts {
+                for acc in accounts {
+                    match acc.chain {
+                        Chain::Eip155(chain_id) => {
+                            if !chain_ids.contains(&chain_id) {
+                                chain_ids.push(chain_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        chain_ids
+    }
+
+    fn update_chain_id(&mut self) {
+        let networks = self.available_networks();
+        if !networks.contains(&self.chain_id) {
+            self.chain_id = *networks.last().unwrap_or(&0);
         }
     }
 }
@@ -308,6 +383,39 @@ pub struct SessionSettlement {
     pub pairing_topic: Topic,
     pub controller: Peer,
     pub expiry: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAccountsChanged {
+    pub data: Vec<SessionAccount>,
+    pub chain_id: Chain,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUpdate {
+    pub namespaces: HashMap<String, Namespace>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "event")]
+pub enum SessionEventType {
+    #[serde(rename = "accountsChanged")]
+    AccountsChanged(EventAccountsChanged),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionEvent {
+    pub event: SessionEventType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDeletion {
+    pub message: String,
+    pub code: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

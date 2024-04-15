@@ -56,8 +56,8 @@ In progress of creation.
 - [X] Handling manual chain changes
 - [X] Handling events
 - [X] Handling pings 
-- [ ] Handling session updates
-- [ ] Handling session deletion
+- [X] Handling session updates
+- [X] Handling session deletion
 - [ ] Handling non-WASM usage for servers
 
 ## Note on WASM

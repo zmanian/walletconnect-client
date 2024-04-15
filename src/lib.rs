@@ -53,7 +53,8 @@ use futures::{
 };
 use gloo_net::websocket::{futures::WebSocket, Message, WebSocketError};
 use log::{debug, error};
-use metadata::{Method, Namespace, SessionAccount, SessionRpcRequest};
+use metadata::{Method, SessionAccount, SessionRpcRequest};
+use rpc::{TAG_SESSION_DELETE_RESPONSE, TAG_SESSION_EVENT_RESPONSE, TAG_SESSION_UPDATE_RESPONSE};
 use serde::{Deserialize, Serialize};
 use url::Url;
 use wasm_bindgen::__rt::WasmRefCell;
@@ -302,7 +303,7 @@ impl WalletConnect {
     /// Checks if given WallectConnect wallet connection is able to send transactions (not just
     /// signing them)
     pub fn can_send(&self) -> bool {
-        match self.namespace() {
+        match self.state.borrow().session.namespace() {
             Some(namespace) => namespace.methods.contains(&Method::SendTransaction),
             None => false,
         }
@@ -311,7 +312,7 @@ impl WalletConnect {
     /// Checks i given WalletCOnnect wallet connection supporst given JSON-RPC method
     pub fn supports_method(&self, method: &str) -> bool {
         if let Ok(method) = method.parse::<Method>() {
-            return match self.namespace() {
+            return match self.state.borrow().session.namespace() {
                 Some(namespace) => namespace.methods.contains(&method),
                 None => false,
             };
@@ -332,35 +333,21 @@ impl WalletConnect {
 
     /// Get all accounts from connected wallet. None if no wallet is connected yet.
     pub fn get_accounts(&self) -> Option<Vec<SessionAccount>> {
-        if let Some(namespace) = self.namespace() {
+        if let Some(namespace) = self.state.borrow().session.namespace() {
             return namespace.accounts.clone();
         }
         None
     }
 
     /// Returns a list of available ChainIds in connected account
-    pub fn available_networks(self) -> Vec<u64> {
-        let mut chain_ids = Vec::new();
-        if let Some(namespace) = self.namespace() {
-            if let Some(accounts) = &namespace.accounts {
-                for acc in accounts {
-                    match acc.chain {
-                        metadata::Chain::Eip155(chain_id) => {
-                            if !chain_ids.contains(&chain_id) {
-                                chain_ids.push(chain_id);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        chain_ids
+    pub fn available_networks(&self) -> Vec<u64> {
+        self.state.borrow().session.available_networks()
     }
 
     /// Get all accounts addresses from connected wallet limited to certain `chain_id`. None if no
     /// wallet is connected yet.
     pub fn get_accounts_for_chain_id(&self, chain_id: u64) -> Option<Vec<Address>> {
-        if let Some(namespace) = self.namespace() {
+        if let Some(namespace) = self.state.borrow().session.namespace() {
             if let Some(accounts) = &namespace.accounts {
                 if accounts.len() > 0 {
                     let chain_id = metadata::Chain::Eip155(chain_id);
@@ -384,7 +371,7 @@ impl WalletConnect {
 
     /// Gets wallets `chain_id`
     pub fn chain_id(&self) -> u64 {
-        self.chain_id
+        self.state.borrow().session.chain_id
     }
 
     /// Gets main accounts address.
@@ -457,6 +444,8 @@ impl WalletConnect {
             return Err(Error::Disconnected);
         }
 
+        let old_chain_id = self.chain_id();
+        let old_accounts = self.get_accounts_for_chain_id(old_chain_id);
         let was_connected = s.is_connected();
         if let Ok(resp) = self.next_from_stream().await {
             match resp {
@@ -490,6 +479,16 @@ impl WalletConnect {
                 event::Event::Disconnected
             }))
         } else {
+            // Wallet can't change chain id and account at the same time, so let's divide it
+            let new_chain_id = self.chain_id();
+            if old_chain_id != new_chain_id {
+                return Ok(Some(event::Event::ChainIdChanged(new_chain_id)));
+            } else {
+                let new_accounts = self.get_accounts_for_chain_id(new_chain_id);
+                if old_accounts != new_accounts {
+                    return Ok(Some(event::Event::AccountsChanged(new_accounts)));
+                }
+            }
             Ok(None)
         }
     }
@@ -623,6 +622,10 @@ impl WalletConnect {
     }
 
     async fn consume_message(&self, topic: &Topic, payload: &str) -> Result<(), Error> {
+        debug!(
+            "Received message {:?}",
+            (*self.state).borrow().cipher.decode_to_string(topic, payload)?
+        );
         let request = (*self.state).borrow().cipher.decode(topic, payload)?;
 
         match request {
@@ -766,17 +769,54 @@ impl WalletConnect {
                     .await?;
                 }
             }
-        }
-        Ok(())
-    }
-
-    fn namespace(&self) -> Option<Namespace> {
-        let state = (*self.state).borrow();
-        if let Some(namespaces) = &state.session.namespaces {
-            if let Some(eip155_namespace) = namespaces.get("eip155") {
-                return Some(eip155_namespace.clone());
+            rpc::WalletMessage::Update(ref update) => {
+                {
+                    let mut state = (*self.state).borrow_mut();
+                    state.session.update(&update);
+                }
+                debug!("Updated, responding");
+                self.wallet_respond(
+                    topic,
+                    request.id,
+                    true,
+                    Duration::minutes(5),
+                    TAG_SESSION_UPDATE_RESPONSE,
+                    false,
+                )
+                .await?;
+            }
+            rpc::WalletMessage::Event(ref event) => {
+                {
+                    let mut state = (*self.state).borrow_mut();
+                    state.session.event(&event);
+                }
+                self.wallet_respond(
+                    topic,
+                    request.id,
+                    true,
+                    Duration::minutes(5),
+                    TAG_SESSION_EVENT_RESPONSE,
+                    false,
+                )
+                .await?;
+            }
+            rpc::WalletMessage::Delete(_) => {
+                {
+                    let mut state = (*self.state).borrow_mut();
+                    state.session.close();
+                    state.state = State::Disconnected;
+                }
+                self.wallet_respond(
+                    topic,
+                    request.id,
+                    true,
+                    Duration::minutes(5),
+                    TAG_SESSION_DELETE_RESPONSE,
+                    false,
+                )
+                .await?;
             }
         }
-        None
+        Ok(())
     }
 }
