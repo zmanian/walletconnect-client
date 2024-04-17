@@ -1,4 +1,5 @@
-use super::{super::domain::DecodingError, ErrorData};
+use super::ErrorData;
+use crate::jwt::decode::error::DecodingError;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 

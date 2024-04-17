@@ -1,11 +1,10 @@
 use super::{
-    super::domain::{MessageId, SubscriptionId, Topic},
-    {
-        FetchResponse, GenericError, Params, RequestPayload, Unsubscribe, ValidationError,
-        MAX_FETCH_BATCH_SIZE, MAX_RECEIVE_BATCH_SIZE, MAX_SUBSCRIPTION_BATCH_SIZE,
-    },
+    FetchResponse, GenericError, Params, RequestPayload, Unsubscribe, ValidationError,
+    MAX_FETCH_BATCH_SIZE, MAX_RECEIVE_BATCH_SIZE, MAX_SUBSCRIPTION_BATCH_SIZE,
 };
+use crate::jwt::decode::{MessageId, SubscriptionId, Topic};
 use serde::{Deserialize, Serialize};
+
 /// Multi-topic subscription request parameters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[doc(hidden)]

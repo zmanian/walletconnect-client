@@ -1,12 +1,10 @@
 use crate::metadata::{Empty, SessionDeletion, SessionEvent, SessionUpdate};
 
 use super::{
-    super::{
-        domain::MessageId,
-        metadata::{Responder, SessionPropose, SessionRpcRequest, SessionSettlement},
-    },
+    super::metadata::{Responder, SessionPropose, SessionRpcRequest, SessionSettlement},
     Serializable,
 };
+use crate::jwt::decode::MessageId;
 use ethers::providers::JsonRpcError;
 use serde::{Deserialize, Serialize};
 

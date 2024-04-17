@@ -1,4 +1,5 @@
-use super::{super::domain::MessageId, ResponseParams, ValidationError, JSON_RPC_VERSION_STR};
+use super::{ResponseParams, ValidationError, JSON_RPC_VERSION_STR};
+use crate::jwt::decode::MessageId;
 use serde::{Deserialize, Serialize};
 
 /// Data structure representing a successful JSON RPC response.

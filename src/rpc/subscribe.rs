@@ -1,8 +1,7 @@
-use super::{
-    super::domain::{SubscriptionId, Topic},
-    GenericError, Params, RequestPayload, ValidationError,
-};
+use super::{GenericError, Params, RequestPayload, ValidationError};
+use crate::jwt::decode::{SubscriptionId, Topic};
 use serde::{Deserialize, Serialize};
+
 /// Data structure representing subscribe request params.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Subscribe {

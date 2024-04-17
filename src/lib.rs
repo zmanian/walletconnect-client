@@ -2,15 +2,10 @@
 #![doc = include_str!("../README.md")]
 
 #[doc(hidden)]
-mod auth;
-#[doc(hidden)]
 mod cipher;
 #[doc(hidden)]
 mod did;
-#[doc(hidden)]
-mod domain;
 mod event;
-#[doc(hidden)]
 mod jwt;
 #[doc(hidden)]
 mod macros;
@@ -26,25 +21,29 @@ mod utils;
 #[doc(hidden)]
 mod watch;
 
-use std::{collections::HashMap, sync::Arc};
-
 use self::{
-    auth::{AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS},
     cipher::{Cipher, CipherError},
-    domain::{ClientIdDecodingError, DecodedClientId, DecodedSymKey, MessageId, ProjectId, Topic},
+    jwt::decode::{client_id::DecodedClientId, MessageId, ProjectId, Topic},
     metadata::{Metadata, Session},
     rpc::{
         ErrorResponse, RequestPayload, Response, ResponseParams, SuccessfulResponse,
         TAG_SESSION_PROPOSE_REQUEST, TAG_SESSION_REQUEST_REQUEST, TAG_SESSION_SETTLE_RESPONSE,
     },
 };
+use std::{collections::HashMap, sync::Arc};
 
+use crate::jwt::{
+    auth::{
+        token::{AuthToken, SerializedAuthToken},
+        RELAY_WEBSOCKET_ADDRESS,
+    },
+    decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
+};
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
-use ethers::{providers::RpcError, types::H160};
 use ethers::{
-    providers::{JsonRpcError, ProviderError},
-    types::Address,
+    providers::{JsonRpcError, ProviderError, RpcError},
+    types::{Address, H160},
 };
 use futures::{
     channel::mpsc::{self, UnboundedSender},

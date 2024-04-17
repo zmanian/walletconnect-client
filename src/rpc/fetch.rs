@@ -1,8 +1,7 @@
-use super::{
-    super::domain::Topic,
-    {GenericError, Params, RequestPayload, SubscriptionData, ValidationError},
-};
+use super::{GenericError, Params, RequestPayload, SubscriptionData, ValidationError};
+use crate::jwt::decode::Topic;
 use serde::{Deserialize, Serialize};
+
 /// Data structure representing fetch request params.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FetchMessages {

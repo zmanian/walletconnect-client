@@ -1,34 +1,13 @@
-use ed25519_dalek::{Signer as DalekSigner, SigningKey};
-use {
-    super::{
-        domain::DecodedClientId,
-        jwt::{JwtBasicClaims, JwtHeader},
-    },
-    chrono::{DateTime, Utc},
-    serde::{Deserialize, Serialize},
-    std::{fmt::Display, time::Duration},
+use crate::jwt::{
+    auth::{error::Error, DEFAULT_TOKEN_AUD},
+    claims::basic::JwtBasicClaims,
+    decode::client_id::DecodedClientId,
+    header::JwtHeader,
 };
-pub use {chrono, rand};
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Invalid duration")]
-    InvalidDuration,
-
-    #[error("Serialization failed: {0}")]
-    Serialization(#[from] serde_json::Error),
-
-    #[error(transparent)]
-    SignatureError(#[from] ethers::core::k256::ecdsa::Error),
-}
-
-pub const RELAY_WEBSOCKET_ADDRESS: &str = "wss://relay.walletconnect.com";
-
-pub const MULTICODEC_ED25519_BASE: &str = "z";
-pub const MULTICODEC_ED25519_HEADER: [u8; 2] = [237, 1];
-pub const MULTICODEC_ED25519_LENGTH: usize = 32;
-
-pub const DEFAULT_TOKEN_AUD: &str = RELAY_WEBSOCKET_ADDRESS;
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Signer, SigningKey};
+use serde::{Deserialize, Serialize};
+use std::{fmt::Display, time::Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]

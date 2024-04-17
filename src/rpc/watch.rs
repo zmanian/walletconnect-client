@@ -1,7 +1,5 @@
-use super::{
-    super::domain::DidKey, super::jwt::JwtError, BoxError, GenericError, Params, RequestPayload,
-    ValidationError,
-};
+use super::{BoxError, GenericError, Params, RequestPayload, ValidationError};
+use crate::jwt::{decode::did::DidKey, error::JwtError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]

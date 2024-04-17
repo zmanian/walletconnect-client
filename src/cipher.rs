@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::domain::{DecodedClientId, DecodedTopic, Topic};
+use crate::jwt::decode::{client_id::DecodedClientId, DecodedTopic, Topic};
 use chacha20poly1305::{aead::Aead, AeadCore, ChaCha20Poly1305, KeyInit, Nonce};
 use ed25519_dalek::VerifyingKey;
 use hkdf::Hkdf;

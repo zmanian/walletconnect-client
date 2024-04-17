@@ -1,8 +1,7 @@
-use super::{
-    super::domain::MessageId, Params, RPCResponse, Serializable, ValidationError,
-    JSON_RPC_VERSION_STR,
-};
+use super::{Params, RPCResponse, Serializable, ValidationError, JSON_RPC_VERSION_STR};
+use crate::jwt::decode::MessageId;
 use serde::{Deserialize, Serialize};
+
 /// Trait that adds validation capabilities and strong typing to errors and
 /// successful responses. Implemented for all possible RPC request types.
 pub trait RequestPayload: Serializable {

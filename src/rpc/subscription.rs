@@ -1,8 +1,7 @@
-use super::{
-    super::domain::{SubscriptionId, Topic},
-    get_message_id, GenericError, MsgId, Params, RequestPayload, ValidationError,
-};
+use super::{get_message_id, GenericError, MsgId, Params, RequestPayload, ValidationError};
+use crate::jwt::decode::{SubscriptionId, Topic};
 use serde::{Deserialize, Serialize};
+
 impl MsgId for Subscription {
     fn msg_id(&self) -> String {
         get_message_id(&self.data.message)
