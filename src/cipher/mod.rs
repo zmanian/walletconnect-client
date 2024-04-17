@@ -1,86 +1,17 @@
-use std::collections::HashMap;
-
-use crate::jwt::decode::{client_id::DecodedClientId, DecodedTopic, Topic};
+use crate::{
+    cipher::{error::CipherError, r#type::Type},
+    jwt::decode::{client_id::DecodedClientId, DecodedTopic, Topic},
+};
 use chacha20poly1305::{aead::Aead, AeadCore, ChaCha20Poly1305, KeyInit, Nonce};
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::Digest;
 use hkdf::Hkdf;
-use log::error;
 use serde::{de::DeserializeOwned, Serialize};
-use sha2::{Digest, Sha256};
-use thiserror::Error;
+use sha2::Sha256;
+use std::collections::HashMap;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-#[derive(Debug, Clone, Copy)]
-pub enum Type {
-    Type0,
-    Type1(VerifyingKey),
-}
-
-impl Default for Type {
-    fn default() -> Self {
-        Type::Type0
-    }
-}
-
-impl Type {
-    fn as_bytes(&self) -> Vec<u8> {
-        match self {
-            Type::Type1(key) => {
-                let mut envelope = vec![1u8];
-                envelope.extend(key.as_bytes().to_vec());
-                envelope
-            }
-            _ => vec![0u8],
-        }
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        match bytes[0] {
-            0u8 => Some(Self::Type0),
-            1u8 => match VerifyingKey::from_bytes((&bytes[1..32]).try_into().unwrap()) {
-                Ok(key) => Some(Self::Type1(key)),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum CipherError {
-    #[error("Unknown topic")]
-    UnknownTopic,
-
-    #[error("Encryption error")]
-    EncryptionError,
-
-    #[error("Corrupted payload")]
-    CorruptedPayload,
-
-    #[error(transparent)]
-    CorruptedString(#[from] std::string::FromUtf8Error),
-
-    #[error(transparent)]
-    DecodeError(#[from] data_encoding::DecodeError),
-
-    #[error(transparent)]
-    CorruptedPacket(#[from] serde_json::error::Error),
-
-    #[error("Invalid key length")]
-    InvalidKeyLength,
-}
-
-impl From<hkdf::InvalidLength> for CipherError {
-    fn from(_: hkdf::InvalidLength) -> Self {
-        Self::InvalidKeyLength
-    }
-}
-
-impl From<chacha20poly1305::Error> for CipherError {
-    fn from(_value: chacha20poly1305::Error) -> Self {
-        Self::EncryptionError
-    }
-}
+pub mod error;
+mod r#type;
 
 #[derive(Clone)]
 pub struct Cipher {

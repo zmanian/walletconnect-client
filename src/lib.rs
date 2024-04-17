@@ -22,7 +22,6 @@ mod utils;
 mod watch;
 
 use self::{
-    cipher::{Cipher, CipherError},
     jwt::decode::{client_id::DecodedClientId, MessageId, ProjectId, Topic},
     metadata::{Metadata, Session},
     rpc::{
@@ -32,9 +31,12 @@ use self::{
 };
 use std::{collections::HashMap, sync::Arc};
 
-use crate::jwt::{
-    decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
-    AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
+use crate::{
+    cipher::{error::CipherError, Cipher},
+    jwt::{
+        decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
+        AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
+    },
 };
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
