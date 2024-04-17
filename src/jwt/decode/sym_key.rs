@@ -1,7 +1,7 @@
-use crate::jwt::{
-    auth::{MULTICODEC_ED25519_BASE, MULTICODEC_ED25519_HEADER, MULTICODEC_ED25519_LENGTH},
-    decode::error::ClientIdDecodingError,
+use super::super::auth::{
+    MULTICODEC_ED25519_BASE, MULTICODEC_ED25519_HEADER, MULTICODEC_ED25519_LENGTH,
 };
+use crate::jwt::decode::error::ClientIdDecodingError;
 use derive_more::{AsMut, AsRef};
 use ed25519_dalek::SecretKey;
 use serde::{Deserialize, Serialize};

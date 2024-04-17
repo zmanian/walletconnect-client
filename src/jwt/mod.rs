@@ -1,9 +1,14 @@
-pub(crate) mod auth;
-pub(crate) mod claims;
+mod auth;
+mod claims;
 mod client_id;
 pub(crate) mod decode;
 pub mod error;
 pub mod header;
+
+pub use auth::{
+    token::{AuthToken, SerializedAuthToken},
+    RELAY_WEBSOCKET_ADDRESS,
+};
 
 const JWT_DELIMITER: &str = ".";
 const JWT_HEADER_TYP: &str = "JWT";

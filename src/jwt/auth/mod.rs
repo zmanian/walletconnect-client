@@ -1,7 +1,7 @@
 mod error;
 pub mod token;
 
-pub(crate) const RELAY_WEBSOCKET_ADDRESS: &str = "wss://relay.walletconnect.com";
+pub const RELAY_WEBSOCKET_ADDRESS: &str = "wss://relay.walletconnect.com";
 pub(crate) const MULTICODEC_ED25519_BASE: &str = "z";
 pub(crate) const MULTICODEC_ED25519_HEADER: [u8; 2] = [237, 1];
 pub(crate) const MULTICODEC_ED25519_LENGTH: usize = 32;

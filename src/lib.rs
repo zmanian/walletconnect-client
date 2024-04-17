@@ -33,11 +33,8 @@ use self::{
 use std::{collections::HashMap, sync::Arc};
 
 use crate::jwt::{
-    auth::{
-        token::{AuthToken, SerializedAuthToken},
-        RELAY_WEBSOCKET_ADDRESS,
-    },
     decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
+    AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
 };
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
@@ -659,12 +656,10 @@ impl WalletConnect {
                 }
                 rpc::SessionResultParams::Response(resp) => {
                     let mut state = (*self.state).borrow_mut();
-                    match state.requests_pending.remove(&response.id) {
-                        Some(mut tx) => {
-                            _ = tx.send(WalletConnectResponse::Value(resp)).await;
-                        }
-                        None => {}
-                    };
+                    if let Some(mut tx) = state.requests_pending.remove(&response.id) {
+                        _ = tx.send(WalletConnectResponse::Value(resp)).await;
+                    }
+
                     Ok(())
                 }
                 _ => {
