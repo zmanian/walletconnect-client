@@ -2,29 +2,29 @@
 #![doc = include_str!("../README.md")]
 
 #[doc(hidden)]
-pub mod auth;
+mod auth;
 #[doc(hidden)]
-pub mod cipher;
+mod cipher;
 #[doc(hidden)]
-pub mod did;
+mod did;
 #[doc(hidden)]
-pub mod domain;
-pub mod event;
+mod domain;
+mod event;
 #[doc(hidden)]
-pub mod jwt;
+mod jwt;
 #[doc(hidden)]
-pub mod macros;
-pub mod metadata;
+mod macros;
+mod metadata;
 #[doc(hidden)]
 pub mod prelude;
 #[doc(hidden)]
-pub mod rpc;
+mod rpc;
 #[doc(hidden)]
-pub mod serde_helpers;
+mod serde_helpers;
 #[doc(hidden)]
-pub mod utils;
+mod utils;
 #[doc(hidden)]
-pub mod watch;
+mod watch;
 
 use std::{collections::HashMap, sync::Arc};
 

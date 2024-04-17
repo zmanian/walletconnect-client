@@ -11,7 +11,7 @@ pub enum Payload {
     /// An inbound request.
     Request(Request),
 
-    /// An inbout session request
+    /// An inout session request
     SessionRequest(SessionRequest),
 
     /// An outbound response.

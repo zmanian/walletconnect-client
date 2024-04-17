@@ -9,7 +9,7 @@ pub trait RequestPayload: Serializable {
     /// The error representing a failed request.
     type Error: Into<ErrorData> + Send + 'static;
 
-    /// The type of a successful response.
+    /// The type of successful response.
     type Response: Serializable;
 
     /// Validates the request parameters.
