@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, num::ParseIntError, str::FromStr};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use ethers::{types::H160, utils::hex};
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
@@ -234,10 +234,7 @@ impl Session {
     pub fn settle(&mut self, settlement: &SessionSettlement) {
         self.namespaces = Some(settlement.namespaces.clone());
         self.controller = Some(settlement.controller.clone());
-        self.expiry = Some(DateTime::from_naive_utc_and_offset(
-            NaiveDateTime::from_timestamp_opt(settlement.expiry, 0).unwrap(),
-            Utc::now().offset().clone(),
-        ));
+        self.expiry = Some(DateTime::<Utc>::from_timestamp(settlement.expiry, 0).unwrap());
         self.pairing_topic = Some(settlement.pairing_topic.clone());
 
         self.update_chain_id();
