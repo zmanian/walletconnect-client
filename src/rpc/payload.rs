@@ -9,7 +9,7 @@ pub enum Payload {
     /// An inbound request.
     Request(Request),
 
-    /// An inout session request
+    /// An inbound session request
     SessionRequest(SessionRequest),
 
     /// An outbound response.
