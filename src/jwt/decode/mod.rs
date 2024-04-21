@@ -6,8 +6,7 @@ pub(crate) mod did;
 pub(crate) mod error;
 pub(crate) mod sym_key;
 
-use crate::jwt::decode::error::DecodingError;
-
+use crate::{cipher::RandProvider, jwt::decode::error::DecodingError};
 use derive_more::{AsMut, AsRef};
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::deserialize_number_from_string;
@@ -25,8 +24,8 @@ macro_rules! impl_byte_array_newtype {
         impl $NewType {
             pub const LENGTH: usize = $ByteLength;
 
-            pub fn generate() -> Self {
-                Self(rand::Rng::gen::<[u8; $ByteLength]>(&mut rand::thread_rng()))
+            pub fn generate(rand_provider: &mut impl RandProvider) -> Self {
+                Self(rand::Rng::gen::<[u8; $ByteLength]>(rand_provider))
             }
 
             pub fn from_bytes(bytes: [u8; $ByteLength]) -> Self {
@@ -73,8 +72,8 @@ macro_rules! impl_byte_array_newtype {
                     $NewType::try_from(self.clone())
                 }
 
-                pub fn generate() -> Self {
-                    Self::from($NewType::generate())
+                pub fn generate(rand_provider: &mut impl RandProvider) -> Self {
+                    Self::from($NewType::generate(rand_provider))
                 }
             }
         };

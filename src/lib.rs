@@ -52,6 +52,7 @@ use futures::{
 use gloo_net::websocket::{futures::WebSocket, Message, WebSocketError};
 use log::{debug, error};
 use metadata::{Method, SessionAccount, SessionRpcRequest};
+use rand::prelude::ThreadRng;
 use rpc::{TAG_SESSION_DELETE_RESPONSE, TAG_SESSION_EVENT_RESPONSE, TAG_SESSION_UPDATE_RESPONSE};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -200,7 +201,7 @@ enum WalletConnectResponse {
 
 #[derive(Clone)]
 struct ClientState {
-    pub cipher: Cipher,
+    pub cipher: Cipher<ThreadRng>,
     pub subscriptions: HashMap<Topic, String>,
     pub pending: HashMap<MessageId, rpc::Params>,
     pub requests_pending: HashMap<MessageId, UnboundedSender<WalletConnectResponse>>,
@@ -255,7 +256,7 @@ impl WalletConnect {
             stream: Arc::new(WasmRefCell::new(stream)),
             id_generator: MessageIdGenerator::default(),
             state: Arc::new(WasmRefCell::new(ClientState {
-                cipher: Cipher::new(keys),
+                cipher: Cipher::new(keys, ThreadRng::default()),
                 subscriptions: HashMap::new(),
                 pending: HashMap::new(),
                 requests_pending: HashMap::new(),
