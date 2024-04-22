@@ -1,98 +1,13 @@
-use ethers::prelude::k256::ecdsa::SigningKey;
-
-use {
-    super::domain::DidKey,
-    chrono::Utc,
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
-    std::collections::HashSet,
+use crate::jwt::{
+    claims::basic::JwtBasicClaims, error::JwtError, header::JwtHeader, JWT_DELIMITER,
+    JWT_VALIDATION_TIME_LEEWAY_SECS,
 };
+use chrono::Utc;
+use ethers::core::k256::ecdsa::SigningKey;
+use serde::{de::DeserializeOwned, Serialize};
+use std::collections::HashSet;
 
-pub const JWT_DELIMITER: &str = ".";
-pub const JWT_HEADER_TYP: &str = "JWT";
-pub const JWT_HEADER_ALG: &str = "EdDSA";
-pub const JWT_VALIDATION_TIME_LEEWAY_SECS: i64 = 120;
-
-#[derive(Debug, thiserror::Error)]
-pub enum JwtError {
-    #[error("Invalid format")]
-    Format,
-
-    #[error("Invalid encoding")]
-    Encoding,
-
-    #[error("Invalid JWT signing algorithm")]
-    Header,
-
-    #[error("JWT Token is expired: {:?}", expiration)]
-    Expired { expiration: Option<i64> },
-
-    #[error(
-        "JWT Token is not yet valid: basic.iat: {}, now + time_leeway: {}, time_leeway: {}",
-        basic_iat,
-        now_time_leeway,
-        time_leeway
-    )]
-    NotYetValid { basic_iat: i64, now_time_leeway: i64, time_leeway: i64 },
-
-    #[error("Invalid audience")]
-    InvalidAudience,
-
-    #[error("Invalid signature")]
-    Signature,
-
-    #[error("Encoding keypair mismatch")]
-    InvalidKeypair,
-
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-
-    #[error(transparent)]
-    SignatureError(#[from] ethers::core::k256::ecdsa::Error),
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct JwtHeader<'a> {
-    #[serde(borrow)]
-    pub typ: &'a str,
-    #[serde(borrow)]
-    pub alg: &'a str,
-}
-
-impl Default for JwtHeader<'_> {
-    fn default() -> Self {
-        Self { typ: JWT_HEADER_TYP, alg: JWT_HEADER_ALG }
-    }
-}
-
-impl<'a> JwtHeader<'a> {
-    pub fn is_valid(&self) -> bool {
-        self.typ == JWT_HEADER_TYP && self.alg == JWT_HEADER_ALG
-    }
-}
-
-/// Basic JWT claims that are common to all JWTs used by the Relay.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct JwtBasicClaims {
-    /// Client ID matching the watch type.
-    pub iss: DidKey,
-    /// Relay URL.
-    pub aud: String,
-    /// Service URL.
-    pub sub: String,
-    /// Issued at, timestamp.
-    pub iat: i64,
-    /// Expiration, timestamp.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exp: Option<i64>,
-}
-
-impl VerifyableClaims for JwtBasicClaims {
-    fn basic(&self) -> &JwtBasicClaims {
-        self
-    }
-}
-
-pub trait VerifyableClaims: Serialize + DeserializeOwned {
+pub trait VerifiableClaims: Serialize + DeserializeOwned {
     /// Returns a reference to the basic claims, which may be a part of a larger
     /// set of claims.
     fn basic(&self) -> &JwtBasicClaims;
@@ -121,9 +36,9 @@ pub trait VerifyableClaims: Serialize + DeserializeOwned {
     /// Tries to parse the claims from a string, returning an error if the
     /// parsing fails for any reason.
     ///
-    /// Note: This does not perorm the actual verification of the claims. After
+    /// Note: This does not perform the actual verification of the claims. After
     /// successful decoding, the claims should be verified using the
-    /// [`VerifyableClaims::verify_basic()`] method.
+    /// [`VerifiableClaims::verify_basic()`] method.
     fn try_from_str(data: &str) -> Result<Self, JwtError>
     where
         Self: Sized,
@@ -188,8 +103,8 @@ pub trait VerifyableClaims: Serialize + DeserializeOwned {
 
     /// Performs basic verification of the claims. This includes the following
     /// checks:
-    /// - The token is not expired (with a configurable leeway). This is
-    ///   optional if the token has an `exp` value;
+    /// - The token is not expired (with a configurable leeway). This is optional if the token has
+    ///   an `exp` value;
     /// - The token is not used before it's valid;
     /// - The token is issued for the correct audience.
     fn verify_basic(

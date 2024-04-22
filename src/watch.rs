@@ -1,10 +1,5 @@
-use {
-    super::{
-        domain::Topic,
-        jwt::{JwtBasicClaims, VerifyableClaims},
-    },
-    serde::{Deserialize, Serialize},
-};
+use crate::jwt::decode::Topic;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -32,48 +27,6 @@ pub enum WatchAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct WatchRegisterClaims {
-    /// Basic JWT claims.
-    #[serde(flatten)]
-    pub basic: JwtBasicClaims,
-    /// Action. Must be `irn_watchRegister`.
-    pub act: WatchAction,
-    /// Watcher type. Either subscriber or publisher.
-    pub typ: WatchType,
-    /// Webhook URL.
-    pub whu: String,
-    /// Array of message tags to watch.
-    pub tag: Vec<u32>,
-    /// Array of statuses to watch.
-    pub sts: Vec<WatchStatus>,
-}
-
-impl VerifyableClaims for WatchRegisterClaims {
-    fn basic(&self) -> &JwtBasicClaims {
-        &self.basic
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct WatchUnregisterClaims {
-    /// Basic JWT claims.
-    #[serde(flatten)]
-    pub basic: JwtBasicClaims,
-    /// Action. Must be `irn_watchUnregister`.
-    pub act: WatchAction,
-    /// Watcher type. Either subscriber or publisher.
-    pub typ: WatchType,
-    /// Webhook URL.
-    pub whu: String,
-}
-
-impl VerifyableClaims for WatchUnregisterClaims {
-    fn basic(&self) -> &JwtBasicClaims {
-        &self.basic
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchEventPayload {
     /// Webhook status. Either `accepted`, `queued` or `delivered`.
@@ -86,27 +39,6 @@ pub struct WatchEventPayload {
     pub published_at: i64,
     /// Message tag.
     pub tag: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct WatchEventClaims {
-    /// Basic JWT claims.
-    #[serde(flatten)]
-    pub basic: JwtBasicClaims,
-    /// Action. Must be `irn_watchEvent`.
-    pub act: WatchAction,
-    /// Watcher type. Either subscriber or publisher.
-    pub typ: WatchType,
-    /// Webhook URL.
-    pub whu: String,
-    /// Event payload.
-    pub evt: WatchEventPayload,
-}
-
-impl VerifyableClaims for WatchEventClaims {
-    fn basic(&self) -> &JwtBasicClaims {
-        &self.basic
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

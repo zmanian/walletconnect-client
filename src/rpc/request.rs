@@ -1,5 +1,7 @@
-use super::{super::domain::MessageId, Params, ValidationError, JSON_RPC_VERSION_STR};
+use super::{Params, ValidationError, JSON_RPC_VERSION_STR};
+use crate::jwt::decode::MessageId;
 use serde::{Deserialize, Serialize};
+
 /// Data structure representing a JSON RPC request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {

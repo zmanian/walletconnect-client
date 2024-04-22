@@ -1,9 +1,7 @@
 pub mod client_id_as_did_key {
 
-    use {
-        crate::domain::DecodedClientId,
-        serde::{Deserialize, Deserializer, Serialize, Serializer},
-    };
+    use crate::jwt::decode::client_id::DecodedClientId;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(data: &DecodedClientId, serializer: S) -> Result<S::Ok, S::Error>
     where

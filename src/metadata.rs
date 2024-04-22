@@ -1,14 +1,12 @@
 use std::{collections::HashMap, fmt::Display, num::ParseIntError, str::FromStr};
 
+use crate::jwt::decode::Topic;
 use chrono::{DateTime, Utc};
 use ethers::{types::H160, utils::hex};
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use super::{
-    domain::Topic,
-    rpc::{SessionParams, SessionPayload},
-};
+use super::rpc::{SessionParams, SessionPayload};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtocolOption {

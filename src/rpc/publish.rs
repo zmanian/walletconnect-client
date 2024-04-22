@@ -1,8 +1,8 @@
 use super::{
-    super::domain::{MessageId, SubscriptionId, Topic},
     get_message_id, BoxError, GenericError, MsgId, Params, Request, RequestPayload, Subscription,
     SubscriptionData, ValidationError, JSON_RPC_VERSION_STR,
 };
+use crate::jwt::decode::{MessageId, SubscriptionId, Topic};
 use serde::{Deserialize, Serialize};
 
 impl MsgId for Publish {

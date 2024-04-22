@@ -2,19 +2,15 @@
 #![doc = include_str!("../README.md")]
 
 #[doc(hidden)]
-mod auth;
-#[doc(hidden)]
 mod cipher;
 #[doc(hidden)]
 mod did;
-#[doc(hidden)]
-mod domain;
 mod event;
-#[doc(hidden)]
 mod jwt;
 #[doc(hidden)]
 mod macros;
-mod metadata;
+#[doc(hidden)]
+pub mod metadata;
 #[doc(hidden)]
 pub mod prelude;
 #[doc(hidden)]
@@ -26,25 +22,28 @@ mod utils;
 #[doc(hidden)]
 mod watch;
 
-use std::{collections::HashMap, sync::Arc};
-
 use self::{
-    auth::{AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS},
-    cipher::{Cipher, CipherError},
-    domain::{ClientIdDecodingError, DecodedClientId, DecodedSymKey, MessageId, ProjectId, Topic},
+    jwt::decode::{client_id::DecodedClientId, MessageId, ProjectId, Topic},
     metadata::{Metadata, Session},
     rpc::{
         ErrorResponse, RequestPayload, Response, ResponseParams, SuccessfulResponse,
         TAG_SESSION_PROPOSE_REQUEST, TAG_SESSION_REQUEST_REQUEST, TAG_SESSION_SETTLE_RESPONSE,
     },
 };
+use std::{collections::HashMap, sync::Arc};
 
+use crate::{
+    cipher::{error::CipherError, Cipher},
+    jwt::{
+        decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
+        AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
+    },
+};
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
-use ethers::{providers::RpcError, types::H160};
 use ethers::{
-    providers::{JsonRpcError, ProviderError},
-    types::Address,
+    providers::{JsonRpcError, ProviderError, RpcError},
+    types::{Address, H160},
 };
 use futures::{
     channel::mpsc::{self, UnboundedSender},
@@ -54,6 +53,7 @@ use futures::{
 use gloo_net::websocket::{futures::WebSocket, Message, WebSocketError};
 use log::{debug, error};
 use metadata::{Method, SessionAccount, SessionRpcRequest};
+use rand::prelude::ThreadRng;
 use rpc::{TAG_SESSION_DELETE_RESPONSE, TAG_SESSION_EVENT_RESPONSE, TAG_SESSION_UPDATE_RESPONSE};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -202,7 +202,7 @@ enum WalletConnectResponse {
 
 #[derive(Clone)]
 struct ClientState {
-    pub cipher: Cipher,
+    pub cipher: Cipher<ThreadRng>,
     pub subscriptions: HashMap<Topic, String>,
     pub pending: HashMap<MessageId, rpc::Params>,
     pub requests_pending: HashMap<MessageId, UnboundedSender<WalletConnectResponse>>,
@@ -257,7 +257,7 @@ impl WalletConnect {
             stream: Arc::new(WasmRefCell::new(stream)),
             id_generator: MessageIdGenerator::default(),
             state: Arc::new(WasmRefCell::new(ClientState {
-                cipher: Cipher::new(keys),
+                cipher: Cipher::new(keys, ThreadRng::default()),
                 subscriptions: HashMap::new(),
                 pending: HashMap::new(),
                 requests_pending: HashMap::new(),
@@ -660,12 +660,10 @@ impl WalletConnect {
                 }
                 rpc::SessionResultParams::Response(resp) => {
                     let mut state = (*self.state).borrow_mut();
-                    match state.requests_pending.remove(&response.id) {
-                        Some(mut tx) => {
-                            _ = tx.send(WalletConnectResponse::Value(resp)).await;
-                        }
-                        None => {}
-                    };
+                    if let Some(mut tx) = state.requests_pending.remove(&response.id) {
+                        _ = tx.send(WalletConnectResponse::Value(resp)).await;
+                    }
+
                     Ok(())
                 }
                 _ => {

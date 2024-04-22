@@ -1,95 +1,37 @@
-use std::collections::HashMap;
-
-use super::domain::{DecodedClientId, DecodedTopic, Topic};
-use chacha20poly1305::{aead::Aead, AeadCore, ChaCha20Poly1305, KeyInit, Nonce};
-use ed25519_dalek::VerifyingKey;
+use crate::{
+    cipher::{error::CipherError, r#type::Type},
+    jwt::decode::{client_id::DecodedClientId, DecodedTopic, Topic},
+};
+use chacha20poly1305::{
+    aead::{
+        rand_core::{CryptoRng, RngCore},
+        Aead,
+    },
+    AeadCore, ChaCha20Poly1305, KeyInit, Nonce,
+};
+use ed25519_dalek::Digest;
 use hkdf::Hkdf;
-use log::error;
+use rand::prelude::ThreadRng;
 use serde::{de::DeserializeOwned, Serialize};
-use sha2::{Digest, Sha256};
-use thiserror::Error;
+use sha2::Sha256;
+use std::collections::HashMap;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-#[derive(Debug, Clone, Copy)]
-pub enum Type {
-    Type0,
-    Type1(VerifyingKey),
-}
+pub mod error;
+mod mock;
+mod r#type;
 
-impl Default for Type {
-    fn default() -> Self {
-        Type::Type0
-    }
-}
-
-impl Type {
-    fn as_bytes(&self) -> Vec<u8> {
-        match self {
-            Type::Type1(key) => {
-                let mut envelope = vec![1u8];
-                envelope.extend(key.as_bytes().to_vec());
-                envelope
-            }
-            _ => vec![0u8],
-        }
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        match bytes[0] {
-            0u8 => Some(Self::Type0),
-            1u8 => match VerifyingKey::from_bytes((&bytes[1..32]).try_into().unwrap()) {
-                Ok(key) => Some(Self::Type1(key)),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum CipherError {
-    #[error("Unknown topic")]
-    UnknownTopic,
-
-    #[error("Encryption error")]
-    EncryptionError,
-
-    #[error("Corrupted payload")]
-    CorruptedPayload,
-
-    #[error(transparent)]
-    CorruptedString(#[from] std::string::FromUtf8Error),
-
-    #[error(transparent)]
-    DecodeError(#[from] data_encoding::DecodeError),
-
-    #[error(transparent)]
-    CorruptedPacket(#[from] serde_json::error::Error),
-
-    #[error("Invalid key length")]
-    InvalidKeyLength,
-}
-
-impl From<hkdf::InvalidLength> for CipherError {
-    fn from(_: hkdf::InvalidLength) -> Self {
-        Self::InvalidKeyLength
-    }
-}
-
-impl From<chacha20poly1305::Error> for CipherError {
-    fn from(_value: chacha20poly1305::Error) -> Self {
-        Self::EncryptionError
-    }
-}
+pub(crate) trait RandProvider: RngCore + CryptoRng + Clone {}
 
 #[derive(Clone)]
-pub struct Cipher {
+pub struct Cipher<R: RandProvider> {
     pub keys: HashMap<Topic, StaticSecret>,
     pub ciphers: HashMap<Topic, ChaCha20Poly1305>,
+    rand_provider: R,
 }
 
-impl Cipher {
-    pub fn new(state: Option<Vec<(Topic, StaticSecret)>>) -> Self {
+impl<R: RandProvider> Cipher<R> {
+    pub fn new(state: Option<Vec<(Topic, StaticSecret)>>, rand_provider: R) -> Self {
         let mut keys = HashMap::new();
         let mut ciphers = HashMap::new();
         if let Some(state) = state {
@@ -98,12 +40,14 @@ impl Cipher {
                 keys.insert(topic, key);
             }
         }
-        Self { keys, ciphers }
+
+        Self { keys, ciphers, rand_provider }
     }
 
     pub fn generate(&mut self) -> (Topic, StaticSecret) {
-        let key = StaticSecret::random_from_rng(&mut rand::thread_rng());
-        let topic = Topic::generate();
+        let mut rand_provider = self.rand_provider.clone();
+        let key = StaticSecret::random_from_rng(&mut rand_provider);
+        let topic = Topic::generate(&mut rand_provider);
         self.register(topic.clone(), key.clone());
         (topic, key)
     }
@@ -202,5 +146,68 @@ impl Cipher {
         let decoded_bytes = cipher.decrypt((&bytes[0..12]).into(), &bytes[12..])?;
 
         Ok(String::from_utf8(decoded_bytes)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cipher::mock::MockRandProvider;
+    use ethers::utils::hex;
+    use rand::RngCore;
+
+    #[test]
+    fn test_generate_creates_key_and_topic_based_on_mock() {
+        // arrange
+        let mut rng = MockRandProvider { next_u32_call: 0, fill_bytes_call: 0 };
+        let mut expected_secret = [0u8; 32];
+        rng.fill_bytes(&mut expected_secret);
+        let mut expected_topic = [0u8; 32];
+        for i in 0..32 {
+            expected_topic[i] = rng.next_u32() as u8;
+        }
+        let expected_secret = hex::encode(expected_secret);
+        let expected_topic = hex::encode(expected_topic);
+        let mut cipher = Cipher::new(None, rng.clone());
+
+        // act
+        let (topic, key) = cipher.generate();
+
+        // assert
+        assert!(cipher.keys.contains_key(&topic));
+        assert!(cipher.ciphers.contains_key(&topic));
+        assert_eq!(rng.fill_bytes_call, 1);
+        assert_eq!(rng.next_u32_call, 32);
+
+        let topic_value = format!("{}", topic.value());
+        let secret_value = hex::encode(key.to_bytes());
+        assert_eq!(topic_value, expected_topic);
+        assert_eq!(secret_value, expected_secret);
+    }
+
+    #[test]
+    fn test_generate_unique_keys_and_topics() {
+        // arrange
+        let mut cipher = Cipher::new(None, rand::thread_rng().clone());
+        let mut generated_keys = HashMap::new();
+        let mut generated_topic = HashMap::new();
+
+        // act
+        for _ in 0..1024 {
+            let (topic, key) = cipher.generate();
+
+            // assert
+            assert!(cipher.keys.contains_key(&topic));
+            assert!(cipher.ciphers.contains_key(&topic));
+            assert!(
+                !generated_keys.contains_key(&key.clone().to_bytes()),
+                "Duplicate key generated"
+            );
+            assert!(!generated_topic.contains_key(&topic), "Duplicate topic generated");
+
+            generated_topic.insert(topic.clone(), key.clone());
+            let key = key.to_bytes();
+            generated_keys.insert(key, topic.clone());
+        }
     }
 }

@@ -1,7 +1,5 @@
-use super::{
-    super::domain::MessageId,
-    {ErrorResponse, Request, Response, SessionRequest, ValidationError},
-};
+use super::{ErrorResponse, Request, Response, SessionRequest, ValidationError};
+use crate::jwt::decode::MessageId;
 use serde::{Deserialize, Serialize};
 
 /// Enum representing a JSON RPC payload.
