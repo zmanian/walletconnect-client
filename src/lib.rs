@@ -9,7 +9,8 @@ mod event;
 mod jwt;
 #[doc(hidden)]
 mod macros;
-mod metadata;
+#[doc(hidden)]
+pub mod metadata;
 #[doc(hidden)]
 pub mod prelude;
 #[doc(hidden)]
