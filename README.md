@@ -16,6 +16,8 @@ use walletconnect_client::prelude::*;
 To initiate walletconnect connection with the wallet, set up your dApps metadata:
 
 ```rust
+use walletconnect_client::prelude::*;
+
 let dapp = Metadata::from("Your dApp's name", 
                           "Your dApp's short description", 
                           "https://url.of.your.dapp", 
@@ -25,25 +27,38 @@ let dapp = Metadata::from("Your dApp's name",
 ...and once you'll get your projects id from WalletConnect portal, you can simply create the connection:
 
 ```rust 
-let client = WalletConnect::connect(PROJECT_ID, 
-                                    1 /* Ethereums chain id */, 
-                                    dapp, 
-                                    Some(Box::new(move |event| 
-                                    debug!("Received an event from WallectConnect {event:?}")))).await?;
-let url = client.initiate_session().await?;
+use walletconnect_client::prelude::*;
+
+const PROJECT_ID: &str = "myprojectidfromwalletconnectportal";
+
+async fn start_session(dapp: Metadata) -> Result<String, WalletConnectError> {
+    let client = WalletConnect::connect(PROJECT_ID.into(), 
+            1 /* Ethereums chain id */, 
+            dapp, 
+            None)?;
+    let url = client.initiate_session(None).await?;
+    Ok(url)
+}
 ```
 
-Now your wallet need to get your sessions url. You can pass it on using url call with proper schema, or present it using qrcode like:
+Now your wallet need to get your sessions url. You can pass it on using url call with proper schema, or present it using qrcode using crates such as `qrcode-generator`:
 
-```rust 
-let png_vec =
-qrcode_generator::to_png_to_vec(&url, QrCodeEcc::Low, 512).unwrap();
-svg.set(format!(
-            "data:image/png;base64,{}",
-            data_encoding::BASE64.encode(&png_vec)
-            ));
+State loop is manually handled by the implementor (there's no concurrency in some places).
+You have to loop somewhere to get any updates from WalletConnect.
+
+```rust
+use walletconnect_client::prelude::*;
+
+async fn handle_messages(wc: WalletConnect) {
+    while let Ok(event) = wc.next().await {
+        match event {
+            Some(event) => println!("Got a new WC event {event:?}"),
+            None => println!("This loop brought no new event, and that is fine")
+        }
+    }
+}
+
 ```
-
 ## Documentation
 
 In progress of creation.
