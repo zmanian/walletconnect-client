@@ -16,11 +16,12 @@ use walletconnect_client::prelude::*;
 To initiate walletconnect connection with the wallet, set up your dApps metadata:
 
 ```rust
+use url::Url;
 use walletconnect_client::prelude::*;
 
 let dapp = Metadata::from("Your dApp's name", 
                           "Your dApp's short description", 
-                          "https://url.of.your.dapp", 
+                          Url::parse("https://url.of.your.dapp").expect("Wrong URL"), 
                           vec!["https://url.to.your.dapps.icon".to_string()]);
 ```
 

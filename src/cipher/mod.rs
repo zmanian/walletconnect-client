@@ -11,7 +11,6 @@ use chacha20poly1305::{
 };
 use ed25519_dalek::Digest;
 use hkdf::Hkdf;
-use rand::prelude::ThreadRng;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -21,7 +20,7 @@ pub mod error;
 mod mock;
 mod r#type;
 
-pub(crate) trait RandProvider: RngCore + CryptoRng + Clone {}
+pub trait RandProvider: RngCore + CryptoRng + Clone {}
 
 #[derive(Clone)]
 pub struct Cipher<R: RandProvider> {

@@ -1,15 +1,10 @@
 use ed25519_dalek::VerifyingKey;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum Type {
+    #[default]
     Type0,
     Type1(VerifyingKey),
-}
-
-impl Default for Type {
-    fn default() -> Self {
-        Type::Type0
-    }
 }
 
 impl Type {

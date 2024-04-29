@@ -54,3 +54,7 @@ x25519-dalek = { version = "2.0", features = [
     "serde",
 ] }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+
+[dev-dependencies]
+tokio = { version = "1.37.0", features = ["full", "test-util"]  }
+regex = "1.10"

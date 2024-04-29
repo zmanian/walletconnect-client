@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use ethers::{types::H160, utils::hex};
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
+use url::Url;
 
 use super::rpc::{SessionParams, SessionPayload};
 
@@ -43,11 +44,11 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn from(name: &str, description: &str, url: &str, icons: Vec<String>) -> Self {
+    pub fn from(name: &str, description: &str, url: Url, icons: Vec<String>) -> Self {
         Self {
             name: name.to_string(),
             description: description.to_string(),
-            url: url.to_string(),
+            url: url.into(),
             icons,
             verify_url: None,
             redirect: None,
@@ -103,9 +104,9 @@ pub enum Chain {
     Eip155(u64),
 }
 
-impl Into<u64> for Chain {
-    fn into(self) -> u64 {
-        match self {
+impl From<Chain> for u64 {
+    fn from(val: Chain) -> Self {
+        match val {
             Chain::Eip155(id) => id,
         }
     }
@@ -126,7 +127,7 @@ pub enum ChainError {
 impl FromStr for Chain {
     type Err = ChainError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let components = s.split(":").collect::<Vec<_>>();
+        let components = s.split(':').collect::<Vec<_>>();
         if components.len() != 2 {
             return Err(ChainError::BadFormat);
         }
@@ -191,6 +192,17 @@ pub struct Session {
     pub chain_id: u64,
 }
 
+impl From<Session> for SessionPropose {
+    fn from(val: Session) -> Self {
+        SessionPropose {
+            relays: vec![val.relay],
+            required_namespaces: val.required_namespaces,
+            optional_namespaces: val.optional_namespaces,
+            proposer: val.proposer,
+        }
+    }
+}
+
 impl Session {
     pub fn from(metadata: Metadata, chain_id: u64) -> Self {
         let mut required_namespaces = HashMap::new();
@@ -251,7 +263,7 @@ impl Session {
                 let new_acc = acc_update.clone();
                 if let Some(mut nspaces) = self.namespaces.clone() {
                     if let Some(eip155_namespace) = nspaces.get_mut("eip155") {
-                        eip155_namespace.accounts = Some(new_acc.data.into());
+                        eip155_namespace.accounts = Some(new_acc.data);
                     }
                 }
                 // Last but not least - change chain id
@@ -265,15 +277,6 @@ impl Session {
         self.namespaces = None;
         self.controller = None;
         self.expiry = None;
-    }
-
-    pub fn into_propose(&self) -> SessionPropose {
-        SessionPropose {
-            relays: vec![self.relay.clone()],
-            required_namespaces: self.required_namespaces.clone(),
-            optional_namespaces: self.optional_namespaces.clone(),
-            proposer: self.proposer.clone(),
-        }
     }
 
     pub fn namespace(&self) -> Option<Namespace> {
@@ -437,7 +440,7 @@ pub enum SessionAccountError {
 impl FromStr for SessionAccount {
     type Err = SessionAccountError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let components = s.split(":").collect::<Vec<_>>();
+        let components = s.split(':').collect::<Vec<_>>();
         if components.len() != 3 {
             return Err(SessionAccountError::BadFormat);
         }

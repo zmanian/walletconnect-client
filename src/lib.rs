@@ -5,12 +5,15 @@
 mod cipher;
 #[doc(hidden)]
 mod did;
+#[doc(hidden)]
+mod error;
 mod event;
 mod jwt;
+mod lib_tests;
 #[doc(hidden)]
 mod macros;
 #[doc(hidden)]
-pub mod metadata;
+mod metadata;
 #[doc(hidden)]
 pub mod prelude;
 #[doc(hidden)]
@@ -21,6 +24,8 @@ mod serde_helpers;
 mod utils;
 #[doc(hidden)]
 mod watch;
+
+pub use crate::error::Error as WalletConnectError;
 
 use self::{
     jwt::decode::{client_id::DecodedClientId, MessageId, ProjectId, Topic},
@@ -33,22 +38,22 @@ use self::{
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    cipher::{error::CipherError, Cipher},
+    cipher::Cipher,
+    error::Error,
     jwt::{
-        decode::{error::ClientIdDecodingError, sym_key::DecodedSymKey},
-        AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
+        decode::sym_key::DecodedSymKey, AuthToken, SerializedAuthToken, RELAY_WEBSOCKET_ADDRESS,
     },
+    metadata::SessionPropose,
 };
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use ethers::{
-    providers::{JsonRpcError, ProviderError, RpcError},
+    providers::JsonRpcError,
     types::{Address, H160},
 };
 use futures::{
     channel::mpsc::{self, UnboundedSender},
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
+    Sink, SinkExt, Stream, StreamExt,
 };
 use gloo_net::websocket::{futures::WebSocket, Message, WebSocketError};
 use log::{debug, error};
@@ -96,7 +101,7 @@ impl State {
 }
 
 /// MessageId generator based on sequence and current timestamp
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MessageIdGenerator {
     next: u64,
 }
@@ -112,85 +117,6 @@ impl MessageIdGenerator {
         let id = timestamp << 8 | next;
 
         MessageId::new(id)
-    }
-}
-
-impl Default for MessageIdGenerator {
-    fn default() -> Self {
-        Self { next: 0 }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-/// WalletConnect error.
-pub enum Error {
-    #[error("Query error")]
-    Query,
-
-    #[error("Url error")]
-    Url,
-
-    #[error("Token error")]
-    Token,
-
-    #[error("Disconnected")]
-    Disconnected,
-
-    #[error("BadParameter")]
-    BadParam,
-
-    #[error("Unknown error")]
-    Unknown,
-
-    #[error("Bad response")]
-    BadResponse,
-
-    #[error("Wallet error")]
-    WalletError(JsonRpcError),
-
-    #[error(transparent)]
-    ClientIdDecodingError(#[from] ClientIdDecodingError),
-
-    #[error(transparent)]
-    CipherError(#[from] CipherError),
-
-    #[error(transparent)]
-    CorruptedPacket(#[from] serde_json::error::Error),
-
-    #[error(transparent)]
-    WebSocketError(#[from] WebSocketError),
-
-    #[error(transparent)]
-    JSError(#[from] gloo_utils::errors::JsError),
-}
-
-impl RpcError for Error {
-    fn as_serde_error(&self) -> Option<&serde_json::Error> {
-        match self {
-            Error::CorruptedPacket(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    fn is_serde_error(&self) -> bool {
-        self.as_serde_error().is_some()
-    }
-
-    fn as_error_response(&self) -> Option<&JsonRpcError> {
-        match self {
-            Error::WalletError(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    fn is_error_response(&self) -> bool {
-        self.as_error_response().is_some()
-    }
-}
-
-impl From<Error> for ProviderError {
-    fn from(src: Error) -> Self {
-        ProviderError::JsonRpcClientError(Box::new(src))
     }
 }
 
@@ -210,11 +136,11 @@ struct ClientState {
     pub session: Session,
 }
 
-/// Main struct for handling WallectConnect links with wallets.
+/// Main struct for handling WalletConnect links with wallets.
 #[derive(Clone)]
 pub struct WalletConnect {
-    sink: Arc<WasmRefCell<SplitSink<WebSocket, Message>>>,
-    stream: Arc<WasmRefCell<SplitStream<WebSocket>>>,
+    sink: Arc<WasmRefCell<dyn Sink<Message, Error = WebSocketError> + 'static + Unpin>>,
+    stream: Arc<WasmRefCell<dyn Stream<Item = Result<Message, WebSocketError>> + 'static + Unpin>>,
     id_generator: MessageIdGenerator,
     state: Arc<WasmRefCell<ClientState>>,
     chain_id: u64,
@@ -300,7 +226,7 @@ impl WalletConnect {
         Ok(())
     }
 
-    /// Checks if given WallectConnect wallet connection is able to send transactions (not just
+    /// Checks if given WalletConnect wallet connection is able to send transactions (not just
     /// signing them)
     pub fn can_send(&self) -> bool {
         match self.state.borrow().session.namespace() {
@@ -309,7 +235,7 @@ impl WalletConnect {
         }
     }
 
-    /// Checks i given WalletCOnnect wallet connection supporst given JSON-RPC method
+    /// Checks i given WalletConnect wallet connection support given JSON-RPC method
     pub fn supports_method(&self, method: &str) -> bool {
         if let Ok(method) = method.parse::<Method>() {
             return match self.state.borrow().session.namespace() {
@@ -349,14 +275,14 @@ impl WalletConnect {
     pub fn get_accounts_for_chain_id(&self, chain_id: u64) -> Option<Vec<Address>> {
         if let Some(namespace) = self.state.borrow().session.namespace() {
             if let Some(accounts) = &namespace.accounts {
-                if accounts.len() > 0 {
+                if !accounts.is_empty() {
                     let chain_id = metadata::Chain::Eip155(chain_id);
                     return Some(
                         accounts
                             .iter()
                             .filter_map(|acc| {
                                 if acc.chain == chain_id {
-                                    Some(acc.account.into())
+                                    Some(acc.account)
                                 } else {
                                     None
                                 }
@@ -375,7 +301,7 @@ impl WalletConnect {
     }
 
     /// Gets main accounts address.
-    pub fn address(&self) -> ethers::types::Address {
+    pub fn address(&self) -> Address {
         if let Some(account) = self.get_account() {
             account
         } else {
@@ -587,7 +513,7 @@ impl WalletConnect {
         let id = self.id_generator.next();
         let params = request.clone().into_params();
         let payload = rpc::Payload::Request(rpc::Request {
-            id: id.clone(),
+            id,
             jsonrpc: rpc::JSON_RPC_VERSION_STR.to_string(),
             params: params.clone(),
         });
@@ -598,9 +524,9 @@ impl WalletConnect {
         Ok(())
     }
 
-    /// Sends response to given message recieved from relay server
+    /// Sends response to given message received from relay server
     pub async fn respond(&self, id: MessageId, success: bool) -> Result<(), Error> {
-        let payload = rpc::Response::Success(rpc::SuccessfulResponse {
+        let payload = Response::Success(SuccessfulResponse {
             id,
             jsonrpc: rpc::JSON_RPC_VERSION_STR.to_string(),
             result: serde_json::Value::Bool(success),
@@ -672,7 +598,7 @@ impl WalletConnect {
                 }
             },
             rpc::SessionMessage::Message(message) => {
-                self.handle_message(&topic, &message).await?;
+                self.handle_message(topic, &message).await?;
                 Ok(())
             }
         }
@@ -680,7 +606,7 @@ impl WalletConnect {
 
     async fn process_response(&self, response: &SuccessfulResponse) -> Result<(), Error> {
         let mut propose_topic = None;
-        let mut propose = None;
+        let mut propose: Option<SessionPropose> = None;
         {
             let mut state = (*self.state).borrow_mut();
             // We need to remove the response from the pending
@@ -697,7 +623,7 @@ impl WalletConnect {
                                 if topic == *awaiting_topic {
                                     state.state = State::SessionProposed(topic.clone());
                                     propose_topic = Some(topic.clone());
-                                    propose = Some(state.session.into_propose());
+                                    propose = Some(state.session.clone().into());
                                 }
                             }
                             State::SwitchingTopic(awaiting_topic) => {
@@ -745,7 +671,7 @@ impl WalletConnect {
                     {
                         let mut state = (*self.state).borrow_mut();
 
-                        state.session.settle(&settlement);
+                        state.session.settle(settlement);
                         state.state = State::Connected(settled_topic.clone());
                         let now = Utc::now();
                         let expires_in = state.session.expiry.unwrap() - now;
@@ -770,7 +696,7 @@ impl WalletConnect {
             rpc::WalletMessage::Update(ref update) => {
                 {
                     let mut state = (*self.state).borrow_mut();
-                    state.session.update(&update);
+                    state.session.update(update);
                 }
                 debug!("Updated, responding");
                 self.wallet_respond(
@@ -786,7 +712,7 @@ impl WalletConnect {
             rpc::WalletMessage::Event(ref event) => {
                 {
                     let mut state = (*self.state).borrow_mut();
-                    state.session.event(&event);
+                    state.session.event(event);
                 }
                 self.wallet_respond(
                     topic,
