@@ -245,7 +245,7 @@ impl Session {
         self.namespaces = Some(settlement.namespaces.clone());
         self.controller = Some(settlement.controller.clone());
         self.expiry = Some(DateTime::<Utc>::from_timestamp(settlement.expiry, 0).unwrap());
-        self.pairing_topic = Some(settlement.pairing_topic.clone());
+        self.pairing_topic = settlement.pairing_topic.clone();
 
         self.update_chain_id();
     }
@@ -268,6 +268,9 @@ impl Session {
                 }
                 // Last but not least - change chain id
                 self.chain_id = new_acc.chain_id.into();
+            }
+            SessionEventType::ChainChanged(ref chain_update) => {
+                self.chain_id = chain_update.data;
             }
         }
     }
@@ -378,7 +381,7 @@ pub struct SessionSettlement {
     pub required_namespaces: Option<HashMap<String, Namespace>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub optional_namespaces: Option<HashMap<String, Namespace>>,
-    pub pairing_topic: Topic,
+    pub pairing_topic: Option<Topic>,
     pub controller: Peer,
     pub expiry: i64,
 }
@@ -392,6 +395,12 @@ pub struct EventAccountsChanged {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EventChainChanged {
+    pub data: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionUpdate {
     pub namespaces: HashMap<String, Namespace>,
 }
@@ -401,6 +410,8 @@ pub struct SessionUpdate {
 pub enum SessionEventType {
     #[serde(rename = "accountsChanged")]
     AccountsChanged(EventAccountsChanged),
+    #[serde(rename = "chainChanged")]
+    ChainChanged(EventChainChanged),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
