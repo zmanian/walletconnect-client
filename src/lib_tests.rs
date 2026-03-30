@@ -119,3 +119,23 @@ mod tests {
         assert!(!sym_key_value.chars().all(|c| c == '0'))
     }
 }
+
+#[cfg(all(test, feature = "native"))]
+mod send_tests {
+    use crate::prelude::*;
+
+    fn assert_send<T: Send>() {}
+
+    #[test]
+    fn test_wallet_connect_native_is_send() {
+        assert_send::<WalletConnect<NativeTransport>>();
+    }
+
+    /// Verify that the future returned by `next()` is Send, which is required
+    /// for use inside `tokio::spawn`.
+    fn _assert_next_future_is_send(wc: &WalletConnect<NativeTransport>) {
+        fn require_send<T: Send>(_t: &T) {}
+        let fut = wc.next();
+        require_send(&fut);
+    }
+}

@@ -582,16 +582,16 @@ impl<T: Transport> WalletConnect<T> {
 
         match request {
             rpc::SessionMessage::Error(session_error) => {
-                let mut state = self.state.lock().expect("state lock poisoned");
-                match state.requests_pending.remove(&session_error.id) {
-                    Some(mut tx) => {
-                        _ = tx
-                            .send(WalletConnectResponse::Error(
-                                session_error.error.as_error_response(),
-                            ))
-                            .await;
-                    }
-                    None => {}
+                let maybe_tx = {
+                    let mut state = self.state.lock().expect("state lock poisoned");
+                    state.requests_pending.remove(&session_error.id)
+                };
+                if let Some(mut tx) = maybe_tx {
+                    _ = tx
+                        .send(WalletConnectResponse::Error(
+                            session_error.error.as_error_response(),
+                        ))
+                        .await;
                 }
                 Ok(())
             }
@@ -611,11 +611,13 @@ impl<T: Transport> WalletConnect<T> {
                     Ok(())
                 }
                 rpc::SessionResultParams::Response(resp) => {
-                    let mut state = self.state.lock().expect("state lock poisoned");
-                    if let Some(mut tx) = state.requests_pending.remove(&response.id) {
+                    let maybe_tx = {
+                        let mut state = self.state.lock().expect("state lock poisoned");
+                        state.requests_pending.remove(&response.id)
+                    };
+                    if let Some(mut tx) = maybe_tx {
                         _ = tx.send(WalletConnectResponse::Value(resp)).await;
                     }
-
                     Ok(())
                 }
                 _ => {
