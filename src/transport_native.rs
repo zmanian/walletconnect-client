@@ -28,7 +28,7 @@ impl Transport for NativeTransport {
 
     async fn send(&self, msg: String) -> Result<(), TransportError> {
         let mut sink = self.sink.lock().await;
-        sink.send(Message::Text(msg))
+        sink.send(Message::Text(msg.into()))
             .await
             .map_err(|e| TransportError::SendFailed(e.to_string()))
     }
@@ -36,7 +36,7 @@ impl Transport for NativeTransport {
     async fn recv(&self) -> Result<Option<String>, TransportError> {
         let mut stream = self.stream.lock().await;
         match stream.next().await {
-            Some(Ok(Message::Text(text))) => Ok(Some(text)),
+            Some(Ok(Message::Text(text))) => Ok(Some(text.to_string())),
             Some(Ok(Message::Binary(_))) => {
                 Err(TransportError::ReceiveFailed("unexpected binary message".into()))
             }

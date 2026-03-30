@@ -35,7 +35,7 @@ serde_qs = "0.12"
 serde_json = "1.0"
 async-trait = "0.1"
 ethers = "2.0"
-thiserror = "1.0"
+thiserror = "2"
 rand = "0.8"
 url = "2.4"
 bs58 = "0.5"
@@ -73,7 +73,7 @@ getrandom = { version = "0.2", features = ["js"], optional = true }
 
 # Native deps (optional)
 tokio = { version = "1", features = ["sync", "rt", "net"], optional = true }
-tokio-tungstenite = { version = "0.24", features = ["native-tls"], optional = true }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.37.0", features = ["full", "test-util"] }
