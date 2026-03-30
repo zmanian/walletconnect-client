@@ -497,4 +497,299 @@ mod simulated_wallet {
             }
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Recording variant: runs the same flow but wraps both transports in
+    // RecordingTransport and saves traces to tests/fixtures/.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    #[ignore] // Requires WALLETCONNECT_PROJECT_ID env var
+    async fn test_record_pairing_traces() {
+        use walletconnect_client::transport_recording::{save_trace, RecordingTransport};
+
+        let project_id_str = std::env::var("WALLETCONNECT_PROJECT_ID")
+            .expect("WALLETCONNECT_PROJECT_ID must be set");
+        let project_id = ProjectId::new(Arc::from(project_id_str.as_str()));
+
+        let fixtures_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        std::fs::create_dir_all(&fixtures_dir).expect("create fixtures dir");
+
+        // --- dApp side: connect via NativeTransport, wrap in RecordingTransport ---
+        let relay_url = build_relay_url(&project_id);
+        let dapp_native =
+            NativeTransport::connect(&relay_url).await.expect("dApp connect to relay");
+        let (dapp_recording, dapp_trace) = RecordingTransport::new(dapp_native, "dapp");
+
+        let dapp = WalletConnect::new(
+            dapp_recording,
+            1,
+            Metadata::from(
+                "Test dApp",
+                "Integration test (recording)",
+                Url::parse("https://test-dapp.example.com").unwrap(),
+                vec![],
+            ),
+            None,
+        );
+
+        let uri = dapp.initiate_session(None).await.expect("initiate_session");
+        println!("[record] Pairing URI: {}", uri);
+
+        let (pairing_topic, sym_key) = parse_pairing_uri(&uri);
+
+        // --- Wallet side: connect and wrap in RecordingTransport ---
+        let wallet_relay_url = build_relay_url(&project_id);
+        let wallet_native =
+            NativeTransport::connect(&wallet_relay_url).await.expect("wallet connect to relay");
+        let (wallet_recording, wallet_trace) = RecordingTransport::new(wallet_native, "wallet");
+
+        // Subscribe wallet to pairing topic
+        let subscribe_id = MessageId::new(chrono::Utc::now().timestamp_millis() as u64);
+        let subscribe_msg = serde_json::json!({
+            "id": subscribe_id.value(),
+            "jsonrpc": "2.0",
+            "method": "irn_subscribe",
+            "params": {
+                "topic": pairing_topic.value()
+            }
+        });
+        wallet_recording
+            .send(serde_json::to_string(&subscribe_msg).unwrap())
+            .await
+            .expect("wallet subscribe send");
+
+        let sub_resp = wallet_recording.recv().await.expect("wallet subscribe response");
+        assert!(sub_resp.is_some(), "Expected subscribe response");
+        println!("[record] Wallet subscribe response: {}", sub_resp.as_ref().unwrap());
+
+        // dApp processes its subscribe confirmation -> publishes SessionPropose
+        let _dapp_event = tokio::time::timeout(std::time::Duration::from_secs(10), dapp.next())
+            .await;
+
+        // Wallet receives the encrypted SessionPropose
+        let wallet_msg =
+            tokio::time::timeout(std::time::Duration::from_secs(15), wallet_recording.recv())
+                .await;
+
+        match wallet_msg {
+            Ok(Ok(Some(msg_text))) => {
+                println!("[record] Wallet received message (len={})", msg_text.len());
+
+                // Decrypt the proposal
+                let sym_secret = StaticSecret::from(sym_key);
+                let mut wallet_cipher = Cipher::new(
+                    Some(vec![(pairing_topic.clone(), sym_secret)]),
+                    StdRng::from_entropy(),
+                );
+
+                // Extract encrypted message from irn_subscription envelope
+                let encrypted_message = {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&msg_text).expect("parse wallet message");
+                    v.pointer("/params/data/message")
+                        .and_then(|m| m.as_str())
+                        .expect("subscription must contain encrypted message")
+                        .to_string()
+                };
+
+                let decrypted_raw: serde_json::Value = wallet_cipher
+                    .decode(&pairing_topic, &encrypted_message)
+                    .expect("decrypt proposal");
+
+                let proposer = &decrypted_raw["params"]["proposer"];
+                let dapp_pub_key_hex = proposer
+                    .get("publicKey")
+                    .or_else(|| proposer.get("public_key"))
+                    .and_then(|k| k.as_str())
+                    .expect("proposer public key");
+
+                let dapp_client_id =
+                    DecodedClientId::from_hex(dapp_pub_key_hex).expect("parse dApp public key");
+
+                // Generate wallet keypair and derive settlement
+                let wallet_secret = StaticSecret::random_from_rng(&mut StdRng::from_entropy());
+                let wallet_public = PublicKey::from(&wallet_secret);
+                let wallet_pub_hex = DecodedClientId::from_key(&wallet_public).to_hex();
+
+                let (settlement_topic, settlement_key) =
+                    Cipher::<StdRng>::derive_sym_key(wallet_secret.clone(), dapp_client_id.as_public_key())
+                        .expect("derive settlement key");
+                wallet_cipher.register(settlement_topic.clone(), settlement_key.clone());
+
+                let proposal_id = decrypted_raw["id"].as_u64().expect("proposal message id");
+
+                // Send Responder
+                let responder = Responder {
+                    relay: walletconnect_client::metadata::ProtocolOption::default(),
+                    responder_public_key: wallet_pub_hex.clone(),
+                };
+                let response_payload = serde_json::json!({
+                    "id": proposal_id,
+                    "jsonrpc": "2.0",
+                    "result": responder,
+                });
+                let encrypted_response = wallet_cipher
+                    .encode(&pairing_topic, &response_payload)
+                    .expect("encrypt responder");
+
+                let publish_id = MessageId::new(chrono::Utc::now().timestamp_millis() as u64 + 1);
+                let publish_msg = serde_json::json!({
+                    "id": publish_id.value(),
+                    "jsonrpc": "2.0",
+                    "method": "irn_publish",
+                    "params": {
+                        "topic": pairing_topic.value(),
+                        "message": encrypted_response,
+                        "ttl": 300,
+                        "tag": rpc::TAG_SESSION_PROPOSE_RESPONSE,
+                        "prompt": false
+                    }
+                });
+                wallet_recording
+                    .send(serde_json::to_string(&publish_msg).unwrap())
+                    .await
+                    .expect("send responder");
+
+                let _pub_ack = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    wallet_recording.recv(),
+                )
+                .await;
+
+                // Subscribe wallet to settlement topic
+                let sub2_id = MessageId::new(chrono::Utc::now().timestamp_millis() as u64 + 2);
+                let sub2_msg = serde_json::json!({
+                    "id": sub2_id.value(),
+                    "jsonrpc": "2.0",
+                    "method": "irn_subscribe",
+                    "params": {
+                        "topic": settlement_topic.value()
+                    }
+                });
+                wallet_recording
+                    .send(serde_json::to_string(&sub2_msg).unwrap())
+                    .await
+                    .expect("wallet subscribe settlement topic");
+
+                let _sub2_ack = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    wallet_recording.recv(),
+                )
+                .await;
+
+                // dApp processes responder, then settlement subscribe
+                let _dapp_event2 = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    dapp.next(),
+                )
+                .await;
+                let _dapp_event3 = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    dapp.next(),
+                )
+                .await;
+
+                // Send SessionSettlement
+                let wallet_address = "0x1234567890abcdef1234567890abcdef12345678";
+                let expiry = (Utc::now() + chrono::Duration::hours(24)).timestamp();
+
+                let mut namespaces = HashMap::new();
+                namespaces.insert(
+                    "eip155".to_string(),
+                    Namespace {
+                        accounts: Some(vec![
+                            format!("eip155:1:{}", wallet_address).parse().expect("parse account")
+                        ]),
+                        chains: Some(vec![Chain::Eip155(1)]),
+                        methods: vec![Method::SignTransaction, Method::SignTypedDataV4],
+                        events: vec![MetadataEvent::ChainChanged, MetadataEvent::AccountsChanged],
+                    },
+                );
+
+                let settlement = SessionSettlement {
+                    relay: walletconnect_client::metadata::ProtocolOption::default(),
+                    namespaces,
+                    required_namespaces: None,
+                    optional_namespaces: None,
+                    pairing_topic: Some(pairing_topic.clone()),
+                    controller: Peer {
+                        public_key: wallet_pub_hex.clone(),
+                        metadata: Metadata::from(
+                            "Test Wallet",
+                            "Simulated wallet (recording)",
+                            Url::parse("https://test-wallet.example.com").unwrap(),
+                            vec![],
+                        ),
+                    },
+                    expiry,
+                };
+
+                let settle_id = MessageId::new(chrono::Utc::now().timestamp_millis() as u64 + 3);
+                let settle_payload = serde_json::json!({
+                    "id": settle_id.value(),
+                    "jsonrpc": "2.0",
+                    "method": "wc_sessionSettle",
+                    "params": settlement,
+                });
+                let encrypted_settlement = wallet_cipher
+                    .encode(&settlement_topic, &settle_payload)
+                    .expect("encrypt settlement");
+
+                let settle_publish_id =
+                    MessageId::new(chrono::Utc::now().timestamp_millis() as u64 + 4);
+                let settle_publish_msg = serde_json::json!({
+                    "id": settle_publish_id.value(),
+                    "jsonrpc": "2.0",
+                    "method": "irn_publish",
+                    "params": {
+                        "topic": settlement_topic.value(),
+                        "message": encrypted_settlement,
+                        "ttl": 300,
+                        "tag": rpc::TAG_SESSION_SETTLE_REQUEST,
+                        "prompt": false
+                    }
+                });
+                wallet_recording
+                    .send(serde_json::to_string(&settle_publish_msg).unwrap())
+                    .await
+                    .expect("send settlement");
+
+                let _settle_ack = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    wallet_recording.recv(),
+                )
+                .await;
+
+                // dApp processes settlement
+                let dapp_event4 = tokio::time::timeout(
+                    std::time::Duration::from_secs(15),
+                    dapp.next(),
+                )
+                .await;
+                println!("[record] dApp event after settlement: {:?}", dapp_event4);
+
+                // Save traces regardless of outcome
+                save_trace(&dapp_trace, &fixtures_dir.join("dapp_trace.json"))
+                    .expect("save dapp trace");
+                save_trace(&wallet_trace, &fixtures_dir.join("wallet_trace.json"))
+                    .expect("save wallet trace");
+
+                println!("[record] Traces saved to tests/fixtures/");
+
+                let _ = dapp.disconnect().await;
+            }
+            other => {
+                // Save whatever we have even on failure
+                save_trace(&dapp_trace, &fixtures_dir.join("dapp_trace.json"))
+                    .expect("save dapp trace");
+                save_trace(&wallet_trace, &fixtures_dir.join("wallet_trace.json"))
+                    .expect("save wallet trace");
+                panic!(
+                    "Wallet did not receive SessionPropose: {:?}",
+                    other
+                );
+            }
+        }
+    }
 }

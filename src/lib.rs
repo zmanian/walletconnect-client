@@ -20,6 +20,10 @@ mod serde_helpers;
 pub mod transport;
 #[cfg(feature = "native")]
 pub mod transport_native;
+#[cfg(feature = "native")]
+pub mod transport_recording;
+#[cfg(feature = "native")]
+pub mod transport_replay;
 #[cfg(feature = "wasm")]
 pub mod transport_wasm;
 #[doc(hidden)]
