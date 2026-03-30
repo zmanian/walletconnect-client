@@ -3,9 +3,9 @@ use chacha20poly1305::aead::{
     rand_core,
     rand_core::{CryptoRng, RngCore},
 };
-use rand::prelude::ThreadRng;
+use rand::rngs::StdRng;
 
-impl RandProvider for ThreadRng {}
+impl RandProvider for StdRng {}
 
 #[derive(Clone)]
 pub struct MockRandProvider {

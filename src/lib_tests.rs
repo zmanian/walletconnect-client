@@ -10,7 +10,7 @@ mod tests {
     use async_trait::async_trait;
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use rand::prelude::ThreadRng;
+    use rand::rngs::StdRng;
     use regex::Regex;
     use std::{
         collections::HashMap,

@@ -44,9 +44,8 @@ impl<R: RandProvider> Cipher<R> {
     }
 
     pub fn generate(&mut self) -> (Topic, StaticSecret) {
-        let mut rand_provider = self.rand_provider.clone();
-        let key = StaticSecret::random_from_rng(&mut rand_provider);
-        let topic = Topic::generate(&mut rand_provider);
+        let key = StaticSecret::random_from_rng(&mut self.rand_provider);
+        let topic = Topic::generate(&mut self.rand_provider);
         self.register(topic.clone(), key.clone());
         (topic, key)
     }
@@ -153,7 +152,7 @@ mod tests {
     use super::*;
     use crate::cipher::mock::MockRandProvider;
     use ethers::utils::hex;
-    use rand::RngCore;
+    use rand::{RngCore, SeedableRng};
 
     #[test]
     fn test_generate_creates_key_and_topic_based_on_mock() {
@@ -187,7 +186,7 @@ mod tests {
     #[test]
     fn test_generate_unique_keys_and_topics() {
         // arrange
-        let mut cipher = Cipher::new(None, rand::thread_rng().clone());
+        let mut cipher = Cipher::new(None, rand::rngs::StdRng::from_entropy());
         let mut generated_keys = HashMap::new();
         let mut generated_topic = HashMap::new();
 

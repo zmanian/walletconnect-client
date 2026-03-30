@@ -61,7 +61,7 @@ use futures::channel::mpsc::{self, UnboundedSender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error};
 use metadata::{Method, SessionAccount, SessionRpcRequest};
-use rand::prelude::ThreadRng;
+use rand::{rngs::StdRng, SeedableRng};
 use rpc::{TAG_SESSION_DELETE_RESPONSE, TAG_SESSION_EVENT_RESPONSE, TAG_SESSION_UPDATE_RESPONSE};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -131,7 +131,7 @@ enum WalletConnectResponse {
 
 #[derive(Clone)]
 pub(crate) struct ClientState {
-    pub cipher: Cipher<ThreadRng>,
+    pub cipher: Cipher<StdRng>,
     pub subscriptions: HashMap<Topic, String>,
     pub pending: HashMap<MessageId, rpc::Params>,
     pub requests_pending: HashMap<MessageId, UnboundedSender<WalletConnectResponse>>,
@@ -167,7 +167,7 @@ impl<T: Transport> WalletConnect<T> {
             transport,
             id_generator: MessageIdGenerator::default(),
             state: Arc::new(Mutex::new(ClientState {
-                cipher: Cipher::new(keys, ThreadRng::default()),
+                cipher: Cipher::new(keys, StdRng::from_entropy()),
                 subscriptions: HashMap::new(),
                 pending: HashMap::new(),
                 requests_pending: HashMap::new(),
@@ -188,7 +188,7 @@ impl<T: Transport> WalletConnect<T> {
         metadata: Metadata,
         stored_state: Option<WalletConnectState>,
     ) -> Result<Self, Error> {
-        let key = SigningKey::generate(&mut rand::thread_rng());
+        let key = SigningKey::generate(&mut StdRng::from_entropy());
         let auth = AuthToken::new(&metadata.url).as_jwt(&key).map_err(|_| Error::Token)?;
 
         #[derive(Serialize)]
@@ -215,7 +215,7 @@ impl<T: Transport> WalletConnect<T> {
             transport,
             id_generator: MessageIdGenerator::default(),
             state: Arc::new(Mutex::new(ClientState {
-                cipher: Cipher::new(keys, ThreadRng::default()),
+                cipher: Cipher::new(keys, StdRng::from_entropy()),
                 subscriptions: HashMap::new(),
                 pending: HashMap::new(),
                 requests_pending: HashMap::new(),
