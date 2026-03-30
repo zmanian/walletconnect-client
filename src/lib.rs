@@ -1,8 +1,7 @@
 //! A simple dApp client library for wallet interaction using WalletConnect v2 protocol.
 #![doc = include_str!("../README.md")]
 
-#[doc(hidden)]
-mod cipher;
+pub mod cipher;
 #[doc(hidden)]
 mod did;
 #[doc(hidden)]
@@ -12,12 +11,10 @@ pub mod jwt;
 mod lib_tests;
 #[doc(hidden)]
 mod macros;
-#[doc(hidden)]
-mod metadata;
+pub mod metadata;
 #[doc(hidden)]
 pub mod prelude;
-#[doc(hidden)]
-mod rpc;
+pub mod rpc;
 #[doc(hidden)]
 mod serde_helpers;
 pub mod transport;

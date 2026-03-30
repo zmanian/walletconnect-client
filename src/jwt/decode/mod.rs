@@ -1,10 +1,10 @@
 use crate::new_type;
 use std::sync::Arc;
 
-pub(crate) mod client_id;
+pub mod client_id;
 pub(crate) mod did;
-pub(crate) mod error;
-pub(crate) mod sym_key;
+pub mod error;
+pub mod sym_key;
 
 use crate::{cipher::RandProvider, jwt::decode::error::DecodingError};
 use derive_more::{AsMut, AsRef};
