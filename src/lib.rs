@@ -8,7 +8,7 @@ mod did;
 #[doc(hidden)]
 mod error;
 mod event;
-mod jwt;
+pub mod jwt;
 mod lib_tests;
 #[doc(hidden)]
 mod macros;

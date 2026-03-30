@@ -10,7 +10,7 @@ pub struct WasmTransport {
     stream: Mutex<futures::stream::SplitStream<WebSocket>>,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Transport for WasmTransport {
     async fn connect(url: &str) -> Result<Self, TransportError> {
         let ws = WebSocket::open(url).map_err(|e| TransportError::ConnectionFailed(e.to_string()))?;

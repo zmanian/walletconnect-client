@@ -13,7 +13,7 @@ pub struct NativeTransport {
     stream: Mutex<futures::stream::SplitStream<WsStream>>,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Transport for NativeTransport {
     async fn connect(url: &str) -> Result<Self, TransportError> {
         let (ws_stream, _) = connect_async(url)

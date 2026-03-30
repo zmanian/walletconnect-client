@@ -12,10 +12,8 @@ mod tests {
     use futures::StreamExt;
     use rand::rngs::StdRng;
     use regex::Regex;
-    use std::{
-        collections::HashMap,
-        sync::{Arc, Mutex},
-    };
+    use std::collections::HashMap;
+    use tokio::sync::Mutex;
     use url::Url;
 
     /// Mock transport for testing.
@@ -24,7 +22,7 @@ mod tests {
         receiver: Mutex<mpsc::UnboundedReceiver<String>>,
     }
 
-    #[async_trait(?Send)]
+    #[async_trait]
     impl Transport for MockTransport {
         async fn connect(_url: &str) -> Result<Self, TransportError> {
             Err(TransportError::ConnectionFailed("mock".into()))
@@ -37,7 +35,7 @@ mod tests {
         }
 
         async fn recv(&self) -> Result<Option<String>, TransportError> {
-            let mut rx = self.receiver.lock().expect("receiver lock poisoned");
+            let mut rx = self.receiver.lock().await;
             match rx.next().await {
                 Some(msg) => Ok(Some(msg)),
                 None => Ok(None),

@@ -14,8 +14,8 @@ pub enum TransportError {
 }
 
 /// Trait abstracting WebSocket transport for WalletConnect relay communication.
-#[async_trait(?Send)]
-pub trait Transport {
+#[async_trait]
+pub trait Transport: Send + Sync {
     /// Connect to the given URL.
     async fn connect(url: &str) -> Result<Self, TransportError>
     where

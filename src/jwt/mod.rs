@@ -1,7 +1,7 @@
 mod auth;
 mod claims;
 mod client_id;
-pub(crate) mod decode;
+pub mod decode;
 pub mod error;
 pub mod header;
 
