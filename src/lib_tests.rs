@@ -4,54 +4,59 @@ mod tests {
         cipher::Cipher,
         jwt::decode::ProjectId,
         metadata::{Metadata, Session},
+        transport::{Transport, TransportError},
         ClientState, MessageIdGenerator, State, WalletConnect,
     };
-    use futures::{
-        channel::{mpsc, mpsc::UnboundedSender},
-        Sink, StreamExt,
-    };
-    use gloo_net::websocket::{Message, WebSocketError};
+    use async_trait::async_trait;
+    use futures::channel::mpsc;
+    use futures::StreamExt;
     use rand::prelude::ThreadRng;
     use regex::Regex;
     use std::{
         collections::HashMap,
-        pin::Pin,
-        sync::Arc,
-        task::{Context, Poll},
+        sync::{Arc, Mutex},
     };
     use url::Url;
-    use wasm_bindgen::__rt::WasmRefCell;
 
-    // WebSocket's Mock
-    struct WebSocketSink<T> {
-        inner: UnboundedSender<T>,
+    /// Mock transport for testing.
+    struct MockTransport {
+        sender: mpsc::UnboundedSender<String>,
+        receiver: Mutex<mpsc::UnboundedReceiver<String>>,
     }
 
-    impl<T> Sink<T> for WebSocketSink<T> {
-        type Error = WebSocketError;
-
-        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.get_mut().inner)
-                .poll_ready(cx)
-                .map_err(|_| WebSocketError::ConnectionError)
+    #[async_trait(?Send)]
+    impl Transport for MockTransport {
+        async fn connect(_url: &str) -> Result<Self, TransportError> {
+            Err(TransportError::ConnectionFailed("mock".into()))
         }
 
-        fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
-            Pin::new(&mut self.get_mut().inner)
-                .start_send(item)
-                .map_err(|_| WebSocketError::ConnectionError)
+        async fn send(&self, msg: String) -> Result<(), TransportError> {
+            self.sender
+                .unbounded_send(msg)
+                .map_err(|e| TransportError::SendFailed(e.to_string()))
         }
 
-        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.get_mut().inner)
-                .poll_flush(cx)
-                .map_err(|_| WebSocketError::ConnectionError)
+        async fn recv(&self) -> Result<Option<String>, TransportError> {
+            let mut rx = self.receiver.lock().expect("receiver lock poisoned");
+            match rx.next().await {
+                Some(msg) => Ok(Some(msg)),
+                None => Ok(None),
+            }
         }
+    }
 
-        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.get_mut().inner)
-                .poll_close(cx)
-                .map_err(|_| WebSocketError::ConnectionError)
+    impl MockTransport {
+        fn new() -> (Self, mpsc::UnboundedSender<String>, mpsc::UnboundedReceiver<String>) {
+            let (outgoing_tx, outgoing_rx) = mpsc::unbounded::<String>();
+            let (incoming_tx, incoming_rx) = mpsc::unbounded::<String>();
+            (
+                Self {
+                    sender: outgoing_tx,
+                    receiver: Mutex::new(incoming_rx),
+                },
+                incoming_tx,
+                outgoing_rx,
+            )
         }
     }
 
@@ -67,30 +72,13 @@ mod tests {
 
         const KEY_LENGTH: usize = 64;
 
-        let project_id = ProjectId::from("test_project");
         let chain_id = 1;
         let metadata =
             Metadata::from("test_url", "test_name", Url::parse("ws://local:9722").unwrap(), vec![]);
 
-        let (sink, stream) = mpsc::unbounded::<Message>();
+        let (transport, _incoming_tx, _outgoing_rx) = MockTransport::new();
 
-        let stream = stream.map(Ok);
-        let sink = WebSocketSink { inner: sink };
-
-        let wallet_connect = WalletConnect {
-            sink: Arc::new(WasmRefCell::new(sink)),
-            stream: Arc::new(WasmRefCell::new(stream)),
-            id_generator: MessageIdGenerator::default(),
-            state: Arc::new(WasmRefCell::new(ClientState {
-                cipher: Cipher::new(None, ThreadRng::default()),
-                subscriptions: HashMap::new(),
-                pending: HashMap::new(),
-                requests_pending: HashMap::new(),
-                state: State::Connecting,
-                session: Session::from(metadata, chain_id),
-            })),
-            chain_id,
-        };
+        let wallet_connect = WalletConnect::new(transport, chain_id, metadata, None);
 
         // act
         let result = wallet_connect.initiate_session(None).await;

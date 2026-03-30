@@ -1,6 +1,7 @@
-use crate::{cipher::error::CipherError, jwt::decode::error::ClientIdDecodingError};
+use crate::cipher::error::CipherError;
+use crate::jwt::decode::error::ClientIdDecodingError;
+use crate::transport::TransportError;
 use ethers::prelude::{JsonRpcError, ProviderError, RpcError};
-use gloo_net::websocket::WebSocketError;
 
 #[derive(Debug, thiserror::Error)]
 /// WalletConnect error.
@@ -39,10 +40,7 @@ pub enum Error {
     CorruptedPacket(#[from] serde_json::error::Error),
 
     #[error(transparent)]
-    WebSocketError(#[from] WebSocketError),
-
-    #[error(transparent)]
-    JSError(#[from] gloo_utils::errors::JsError),
+    TransportError(#[from] TransportError),
 }
 
 impl RpcError for Error {

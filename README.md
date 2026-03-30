@@ -4,7 +4,17 @@ Add this to your Cargo.toml:
 
 ```toml
 [dependencies]
-walletconnect-client = "0.1"
+walletconnect-client = "0.2"
+```
+
+For WASM (browser) usage (default):
+```toml
+walletconnect-client = { version = "0.2", features = ["wasm"] }
+```
+
+For native (server-side) usage:
+```toml
+walletconnect-client = { version = "0.2", default-features = false, features = ["native"] }
 ```
 
 And this to your code:
@@ -19,24 +29,27 @@ To initiate walletconnect connection with the wallet, set up your dApps metadata
 use url::Url;
 use walletconnect_client::prelude::*;
 
-let dapp = Metadata::from("Your dApp's name", 
-                          "Your dApp's short description", 
-                          Url::parse("https://url.of.your.dapp").expect("Wrong URL"), 
+let dapp = Metadata::from("Your dApp's name",
+                          "Your dApp's short description",
+                          Url::parse("https://url.of.your.dapp").expect("Wrong URL"),
                           vec!["https://url.to.your.dapps.icon".to_string()]);
 ```
 
-...and once you'll get your projects id from WalletConnect portal, you can simply create the connection:
+...and once you'll get your projects id from WalletConnect portal, you can simply create the connection.
 
-```rust 
+The `WalletConnect` struct is now generic over a `Transport` implementation:
+
+```rust,no_run
 use walletconnect_client::prelude::*;
 
 const PROJECT_ID: &str = "myprojectidfromwalletconnectportal";
 
+# #[cfg(feature = "native")]
 async fn start_session(dapp: Metadata) -> Result<String, WalletConnectError> {
-    let client = WalletConnect::connect(PROJECT_ID.into(), 
-            1 /* Ethereums chain id */, 
-            dapp, 
-            None)?;
+    let client = WalletConnect::<NativeTransport>::connect(PROJECT_ID.into(),
+            1 /* Ethereums chain id */,
+            dapp,
+            None).await?;
     let url = client.initiate_session(None).await?;
     Ok(url)
 }
@@ -47,10 +60,10 @@ Now your wallet need to get your sessions url. You can pass it on using url call
 State loop is manually handled by the implementor (there's no concurrency in some places).
 You have to loop somewhere to get any updates from WalletConnect.
 
-```rust
+```rust,no_run
 use walletconnect_client::prelude::*;
 
-async fn handle_messages(wc: WalletConnect) {
+async fn handle_messages<T: Transport>(wc: WalletConnect<T>) {
     while let Ok(event) = wc.next().await {
         match event {
             Some(event) => println!("Got a new WC event {event:?}"),
@@ -71,11 +84,17 @@ In progress of creation.
 - [X] Handling typed data signatures
 - [X] Handling manual chain changes
 - [X] Handling events
-- [X] Handling pings 
+- [X] Handling pings
 - [X] Handling session updates
 - [X] Handling session deletion
-- [ ] Handling non-WASM usage for servers
+- [X] Native (tokio-tungstenite) transport support
+- [X] WASM (gloo-net) transport support
 
-## Note on WASM
+## Transport
 
-This library currently needs WASM to work. There is a plan to support server-side implementations, though. For now, we focus on building robust solution for WASM implementations of websites.
+This library supports two transport backends via feature flags:
+
+- `wasm` (default) — Uses `gloo-net` WebSocket for browser/WASM targets
+- `native` — Uses `tokio-tungstenite` for server-side / native targets
+
+You can also implement the `Transport` trait for custom WebSocket backends.
